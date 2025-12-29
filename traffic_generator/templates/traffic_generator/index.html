@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generator ruchu sieciowego</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .packet-card {
+            margin-bottom: 10px;
+            border-left: 4px solid #007bff;
+        }
+        .packet-card.attack {
+            border-left-color: #dc3545;
+        }
+        .packet-info {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+        .status-normal { background-color: #28a745; color: white; }
+        .status-attack { background-color: #dc3545; color: white; }
+        #packet-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">Generator ruchu sieciowego</h1>
+        
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Kontrola Generatora</h5>
+                        <div class="btn-group" role="group">
+                            <button id="startBtn" class="btn btn-success">▶ Start Generator</button>
+                            <button id="stopBtn" class="btn btn-danger" disabled>⏹ Stop</button>
+                            <button id="attackBtn" class="btn btn-warning">⚡ Symuluj Atak</button>
+                        </div>
+                        <div class="mt-3">
+                            <span class="badge bg-primary" id="status">Zatrzymany</span>
+                            <span class="badge bg-info" id="packetCount">Pakietów: 0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Pakiety w czasie rzeczywistym</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="packet-list">
+                            <p class="text-muted">Oczekiwanie na pakiety...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isRunning = false;
+        let pollInterval = null;
+        let eventSource = null;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const attackBtn = document.getElementById('attackBtn');
+        const status = document.getElementById('status');
+        const packetCount = document.getElementById('packetCount');
+        const packetList = document.getElementById('packet-list');
+
+        // Funkcja do wyświetlania pakietu
+        function displayPacket(packet) {
+            const isAttack = packet.attack_type !== undefined;
+            const cardClass = isAttack ? 'packet-card attack' : 'packet-card';
+            
+            const packetHtml = `
+                <div class="card ${cardClass}">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="packet-info">
+                                <strong>${packet.timestamp}</strong>
+                                <br>
+                                <span class="text-primary">${packet.source_ip}:${packet.source_port || 'N/A'}</span>
+                                <span class="mx-2">→</span>
+                                <span class="text-danger">${packet.dest_ip}:${packet.dest_port || 'N/A'}</span>
+                                <br>
+                                <span class="badge bg-secondary">${packet.protocol}</span>
+                                <span class="badge bg-info">${packet.packet_size} bytes</span>
+                                ${isAttack ? `<span class="status-badge status-attack">${packet.attack_type}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Dodaj na początku listy
+            packetList.insertAdjacentHTML('afterbegin', packetHtml);
+            
+            // Ograniczenie do 50 pakietów na ekranie
+            const packets = packetList.querySelectorAll('.packet-card');
+            if (packets.length > 50) {
+                packets[packets.length - 1].remove();
+            }
+        }
+
+        // Funkcja do pobierania pakietów (polling)
+        function fetchPackets() {
+            fetch('/traffic/api/packets/')
+                .then(response => response.json())
+                .then(data => {
+                    packetCount.textContent = `Pakietów: ${data.total}`;
+                    
+                    // Wyświetl tylko nowe pakiety (można dodać logikę śledzenia ostatniego)
+                    if (data.packets && data.packets.length > 0) {
+                        // Wyświetl ostatni pakiet (najnowszy)
+                        const lastPacket = data.packets[data.packets.length - 1];
+                        displayPacket(lastPacket);
+                    }
+                })
+                .catch(error => {
+                    console.error('Błąd pobierania pakietów:', error);
+                });
+        }
+
+        // Start generatora używając Server-Sent Events
+        function startGenerator() {
+            if (isRunning) return;
+            
+            isRunning = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            status.textContent = 'Uruchomiony';
+            status.className = 'badge bg-success';
+            
+            // Użyj Server-Sent Events do streamowania
+            eventSource = new EventSource('/traffic/api/stream/');
+            
+            eventSource.onmessage = function(event) {
+                const packet = JSON.parse(event.data);
+                displayPacket(packet);
+                packetCount.textContent = `Pakietów: ${parseInt(packetCount.textContent.split(':')[1]) + 1 || 1}`;
+            };
+            
+            eventSource.onerror = function(error) {
+                console.error('Błąd SSE:', error);
+                stopGenerator();
+            };
+        }
+
+        // Stop generatora
+        function stopGenerator() {
+            if (!isRunning) return;
+            
+            isRunning = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            status.textContent = 'Zatrzymany';
+            status.className = 'badge bg-secondary';
+            
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+        }
+
+        // Symulacja ataku
+        function simulateAttack() {
+            fetch('/traffic/api/attack/?count=10')
+                .then(response => response.json())
+                .then(data => {
+                    data.packets.forEach(packet => {
+                        displayPacket(packet);
+                    });
+                    packetCount.textContent = `Pakietów: ${parseInt(packetCount.textContent.split(':')[1]) + data.packets_generated || data.packets_generated}`;
+                })
+                .catch(error => {
+                    console.error('Błąd generowania ataku:', error);
+                });
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startGenerator);
+        stopBtn.addEventListener('click', stopGenerator);
+        attackBtn.addEventListener('click', simulateAttack);
+
+        // Auto-start (opcjonalnie)
+        // startGenerator();
+    </script>
+</body>
+</html>
+
+

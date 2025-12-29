@@ -1,0 +1,8 @@
+asgiref==3.11.0
+Django==6.0
+Faker==39.0.0
+numpy==2.4.0
+python-decouple==3.8
+scapy==2.7.0
+sqlparse==0.5.5
+tzdata==2025.3

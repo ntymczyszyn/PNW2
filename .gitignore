@@ -1,0 +1,6 @@
+/.venv
+/network_monitor/__pycache__
+/traffic_generator/__pycache__
+/traffic_generator/migrations/__pycache__/
+/db.sqlite3
+/.env
