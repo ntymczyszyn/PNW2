@@ -3,8 +3,14 @@ Views dla wyświetlania pakietów w czasie rzeczywistym.
 """
 import json
 from django.http import JsonResponse, StreamingHttpResponse
+from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
-from .generator import generator
+from .generator import traffic_generator
+
+
+def generator(request):
+    """Strona główna generatora ruchu."""
+    return render(request, 'generator.html')
 
 
 # Bufor dla ostatnich pakietów (w pamięci, bez bazy danych)
@@ -40,7 +46,7 @@ def stream_packets(request):
     """
     def event_stream():
         # Generuj pakiety w czasie rzeczywistym
-        for packet in generator.generate_normal_traffic(count=None, interval=0.5):
+        for packet in traffic_generator.generate_normal_traffic(count=None, interval=0.5):
             add_to_buffer(packet)
             # Format SSE
             data = json.dumps(packet)
@@ -67,7 +73,7 @@ def start_generator(request):
 def generate_attack(request):
     """Generuje symulację ataku."""
     count = int(request.GET.get('count', 10))
-    packets = list(generator.generate_attack_traffic(count=count, interval=0.1))
+    packets = list(traffic_generator.generate_attack_traffic(count=count, interval=0.1))
     
     # Dodaj do bufora
     for packet in packets:

@@ -1,9 +1,10 @@
 /.venv
-/network_monitor/__pycache__
-/traffic_generator/__pycache__
-/traffic_generator/migrations/__pycache__/
-/db.sqlite3
 /.env
-/analytic_pipline/migrations/__pycache__/
+/db.sqlite3
+/network_monitor/__pycache__
+/network_monitor/migrations
+/traffic_generator/__pycache__
+/traffic_generator/migrations
 /analytic_pipline/__pycache__
+/analytic_pipline/migrations/__pycache__/
 /MachineLearningCVE

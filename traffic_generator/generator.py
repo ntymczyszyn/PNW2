@@ -119,5 +119,5 @@ class TrafficGenerator:
 
 
 # Singleton instance
-generator = TrafficGenerator()
+traffic_generator = TrafficGenerator()
 

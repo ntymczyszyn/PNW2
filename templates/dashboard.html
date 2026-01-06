@@ -1,0 +1,291 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class="container py-4">
+        <!-- Statystyki alertów -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-3">
+                <div class="card h-100 border-primary">
+                    <div class="card-body text-center">
+                        <h6 class="card-subtitle mb-2 text-muted text-uppercase">All alerts</h6>
+                        <h2 class="card-title text-primary">{{ total_alerts }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100 border-warning">
+                    <div class="card-body text-center">
+                        <h6 class="card-subtitle mb-2 text-muted text-uppercase">Pending</h6>
+                        <h2 class="card-title text-warning">{{ pending_alerts }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100 border-danger">
+                    <div class="card-body text-center">
+                        <h6 class="card-subtitle mb-2 text-muted text-uppercase">Confirmed</h6>
+                        <h2 class="card-title text-danger">{{ confirmed_alerts }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100 border-secondary">
+                    <div class="card-body text-center">
+                        <h6 class="card-subtitle mb-2 text-muted text-uppercase">False</h6>
+                        <h2 class="card-title text-secondary">{{ false_alerts }}</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Lista alertów -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">List of Alerts</h4>
+                {% comment %} <span class="badge bg-primary">{{ alerts|length }} displayed</span> {% endcomment %}
+            </div>
+            <div class="card-body">
+                {% if alerts %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>ID</th>
+                                <th>Time</th>
+                                <th>Source IP</th>
+                                <th>Destination IP</th>
+                                <th>Score</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for alert in alerts %}
+                            <tr data-alert-id="{{ alert.id }}">
+                                <td>{{ alert.id }}</td>
+                                <td>{{ alert.timestamp|date:"Y-m-d H:i:s" }}</td>
+                                <td>{{ alert.source_ip }}</td>
+                                <td>{{ alert.destination_ip }}</td>
+                                <td>
+                                    <span class="badge {% if alert.anomaly_score > 0.8 %}bg-danger{% elif alert.anomaly_score > 0.5 %}bg-warning{% else %}bg-info{% endif %}">
+                                        {{ alert.anomaly_score|floatformat:2 }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge status-badge {{ alert.get_status_display_badge }}">
+                                        {{ alert.get_feedback_status_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm border-secondary btn-detail" data-alert-id="{{ alert.id }}" title="Details">
+                                        Details
+                                    </button>
+                                    <button class="btn btn-sm border-secondary btn-feedback" data-alert-id="{{ alert.id }}" title="Edit status">
+                                        Edit status
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Paginacja -->
+                {% if alerts.has_other_pages %}
+                <nav aria-label="Paginacja alertów" class="mt-4">
+                    <ul class="pagination justify-content-center mb-0">
+                        {% if alerts.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1">&laquo; First</a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ alerts.previous_page_number }}">Previous</a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for num in alerts.paginator.page_range %}
+                            {% if alerts.number == num %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ num }}</span>
+                            </li>
+                            {% elif num > alerts.number|add:'-3' and num < alerts.number|add:'3' %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if alerts.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ alerts.next_page_number }}">Next</a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ alerts.paginator.num_pages }}">Last &raquo;</a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                <p class="text-center text-muted mt-2 mb-0">
+                    Page {{ alerts.number }} of {{ alerts.paginator.num_pages }}
+                </p>
+                {% endif %}
+                
+                {% else %}
+                <div class="text-center py-5">
+                    <p class="text-muted">No alerts in the system.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Model szczegółów alertu -->
+    <div class="modal fade" id="alertDetailModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">Alert #<span id="detailAlertId"></span> details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-borderless">
+                        <tr><th>Detection Time:</th><td id="detailTimestamp"></td></tr>
+                        <tr><th>Source IP:</th><td id="detailSourceIp"></td></tr>
+                        <tr><th>Source Port:</th><td id="detailSourcePort"></td></tr>
+                        <tr><th>Destination IP:</th><td id="detailDestIp"></td></tr>
+                        <tr><th>Destination Port:</th><td id="detailDestPort"></td></tr>
+                        <tr><th>Protocol:</th><td id="detailProtocol"></td></tr>
+                        <tr><th>Packet Size:</th><td id="detailPacketSize"></td></tr>
+                        <tr><th>Anomaly Score:</th><td id="detailScore"></td></tr>
+                        <tr><th>Status:</th><td id="detailStatus"></td></tr>
+                        <tr><th>Description:</th><td id="detailDescription"></td></tr>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal weryfikacji alertu -->
+    <div class="modal fade" id="alertFeedbackModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title">Alert #<span id="feedbackAlertId"></span>  verification</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Change alert status</p>
+                    <div class="alert alert-info" role="alert">
+                        <strong>Current alert status:</strong> <span id="currentStatus" class="badge"></span>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-warning btn-lg btn-set-status" data-status="0">
+                            Mark as pending
+                        </button>
+                        <button class="btn btn-danger btn-lg btn-set-status" data-status="1">
+                            Confirm attack
+                        </button>
+                        <button class="btn btn-secondary btn-lg btn-set-status" data-status="2">
+                            Mark as false alarm
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    {% endblock %}
+    </div>
+    {% block extra_js %}
+    <script>
+        // CSRF token helper
+        function getCsrfToken() {
+            return document.querySelector('[name=csrfmiddlewaretoken]').value;
+        }
+
+        let currentAlertId = null;
+
+        // Szczegóły alertu
+        document.querySelectorAll('.btn-detail').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const alertId = this.dataset.alertId;
+                fetch(`/api/alert/${alertId}/`)
+                    .then(response => response.json())
+                    .then(data => {
+                        document.getElementById('detailAlertId').textContent = data.id;
+                        document.getElementById('detailTimestamp').textContent = data.timestamp;
+                        document.getElementById('detailSourceIp').textContent = data.source_ip;
+                        document.getElementById('detailSourcePort').textContent = data.source_port;
+                        document.getElementById('detailDestIp').textContent = data.destination_ip;
+                        document.getElementById('detailDestPort').textContent = data.destination_port;
+                        document.getElementById('detailProtocol').textContent = data.protocol;
+                        document.getElementById('detailPacketSize').textContent = data.packet_size;
+                        document.getElementById('detailScore').textContent = data.anomaly_score.toFixed(2);
+                        document.getElementById('detailStatus').textContent = data.feedback_status_display;
+                        document.getElementById('detailDescription').textContent = data.description;
+                        
+                        new bootstrap.Modal(document.getElementById('alertDetailModal')).show();
+                    });
+            });
+        });
+
+        // Weryfikacja alertu
+        document.querySelectorAll('.btn-feedback').forEach(btn => {
+            btn.addEventListener('click', function() {
+                currentAlertId = this.dataset.alertId;
+                document.getElementById('feedbackAlertId').textContent = currentAlertId;
+                
+                // Pobierz aktualny status z wiersza tabeli
+                const row = document.querySelector(`tr[data-alert-id="${currentAlertId}"]`);
+                const statusBadge = row.querySelector('.status-badge');
+                const currentStatusSpan = document.getElementById('currentStatus');
+                currentStatusSpan.textContent = statusBadge.textContent;
+                currentStatusSpan.className = statusBadge.className;
+                
+                new bootstrap.Modal(document.getElementById('alertFeedbackModal')).show();
+            });
+        });
+
+        // Zmiana statusu
+        document.querySelectorAll('.btn-set-status').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const newStatus = this.dataset.status;
+                const formData = new FormData();
+                formData.append('status', newStatus);
+                
+                fetch(`/api/alert/${currentAlertId}/status/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCsrfToken()
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Aktualizuj badge w tabeli
+                        const row = document.querySelector(`tr[data-alert-id="${currentAlertId}"]`);
+                        const statusBadge = row.querySelector('.status-badge');
+                        statusBadge.textContent = data.new_status_display;
+                        statusBadge.className = 'badge status-badge';
+                        if (data.new_status === 0) statusBadge.classList.add('bg-warning');
+                        else if (data.new_status === 1) statusBadge.classList.add('bg-danger');
+                        else statusBadge.classList.add('bg-secondary');
+                        
+                        // Zamknij modal
+                        bootstrap.Modal.getInstance(document.getElementById('alertFeedbackModal')).hide();
+                        
+                        // Opcjonalnie: odśwież stronę aby zaktualizować statystyki
+                        // location.reload();
+                    } else {
+                        alert('Błąd: ' + data.error);
+                    }
+                });
+            });
+        });
+    </script>
+    {% endblock %}
