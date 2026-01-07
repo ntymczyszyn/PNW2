@@ -1,73 +1,80 @@
-// Traffic Generator
+// Traffic Generator - Simplified
 
 let isRunning = false;
-let pollInterval = null;
 let eventSource = null;
+let totalPackets = 0;
+let pcapFileCount = 0;
 
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const attackBtn = document.getElementById('attackBtn');
+const dosBtn = document.getElementById('dosBtn');
 const status = document.getElementById('status');
 const packetCount = document.getElementById('packetCount');
+const pcapCount = document.getElementById('pcapCount');
 const packetList = document.getElementById('packet-list');
 
-// Funkcja do wyświetlania pakietu
+// Wyświetla pakiet w liście
 function displayPacket(packet) {
     const isAttack = packet.attack_type !== undefined;
-    const cardClass = isAttack ? 'packet-card attack' : 'packet-card';
+    const isFlow = packet.flow_type === 'bidirectional';
+    const cardClass = isAttack ? 'card border-danger' : (isFlow ? 'card border-success' : 'card');
+    const hasPcapSaved = packet.pcap_saved !== undefined;
+    
+    const sizeInfo = packet.packet_count 
+        ? `${packet.packet_count} pkts, ${packet.total_size} bytes`
+        : `${packet.packet_size || 0} bytes`;
     
     const packetHtml = `
-        <div class="card ${cardClass}">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="packet-info">
-                        <strong>${packet.timestamp}</strong>
-                        <br>
-                        <span class="text-primary">${packet.source_ip}:${packet.source_port || 'N/A'}</span>
-                        <span class="mx-2">→</span>
-                        <span class="text-danger">${packet.dest_ip}:${packet.dest_port || 'N/A'}</span>
-                        <br>
-                        <span class="badge bg-secondary">${packet.protocol}</span>
-                        <span class="badge bg-info">${packet.packet_size} bytes</span>
-                        ${isAttack ? `<span class="status-badge status-attack">${packet.attack_type}</span>` : ''}
-                    </div>
+        <div class="${cardClass} mb-2">
+            <div class="card-body py-2">
+                <div class="packet-info">
+                    <strong>${packet.timestamp}</strong>
+                    <br>
+                    <span class="text-primary">${packet.source_ip}:${packet.source_port || 'N/A'}</span>
+                    <span class="mx-2">↔</span>
+                    <span class="text-danger">${packet.dest_ip}:${packet.dest_port || 'N/A'}</span>
+                    <br>
+                    <span class="badge bg-secondary">${packet.protocol}</span>
+                    <span class="badge bg-info">${sizeInfo}</span>
+                    ${isFlow ? '<span class="badge bg-success">Bidirectional</span>' : ''}
+                    ${isAttack ? `<span class="badge bg-danger">${packet.attack_type}</span>` : ''}
+                    ${hasPcapSaved ? '<span class="badge bg-warning text-dark">📄 PCAP saved</span>' : ''}
                 </div>
             </div>
         </div>
     `;
     
+    // Usuń placeholder
+    const placeholder = packetList.querySelector('.text-muted');
+    if (placeholder) placeholder.remove();
+    
     // Dodaj na początku listy
     packetList.insertAdjacentHTML('afterbegin', packetHtml);
     
-    // Ograniczenie do 50 pakietów na ekranie
-    const packets = packetList.querySelectorAll('.packet-card');
-    if (packets.length > 50) {
-        packets[packets.length - 1].remove();
+    // Ogranicz do 50 pakietów
+    while (packetList.children.length > 50) {
+        packetList.lastElementChild.remove();
+    }
+    
+    // Aktualizuj liczniki
+    totalPackets++;
+    packetCount.textContent = `Flows: ${totalPackets}`;
+    
+    if (hasPcapSaved) {
+        pcapFileCount++;
+        pcapCount.textContent = `PCAP files: ${pcapFileCount}`;
     }
 }
 
-// Funkcja do pobierania pakietów (polling)
-function fetchPackets() {
-    fetch('/traffic/api/packets/')
-        .then(response => response.json())
-        .then(data => {
-            packetCount.textContent = `Packets: ${data.total}`;
-            
-            // Wyświetl tylko nowe pakiety (można dodać logikę śledzenia ostatniego)
-            if (data.packets && data.packets.length > 0) {
-                // Wyświetl ostatni pakiet (najnowszy)
-                const lastPacket = data.packets[data.packets.length - 1];
-                displayPacket(lastPacket);
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching packets:', error);
-        });
-}
-
-// Start generatora używając Server-Sent Events
+// Start generatora z SSE
 function startGenerator() {
     if (isRunning) return;
+    
+    fetch('/traffic/api/start/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    });
     
     isRunning = true;
     startBtn.disabled = true;
@@ -75,17 +82,14 @@ function startGenerator() {
     status.textContent = 'Running';
     status.className = 'badge bg-success';
     
-    // Użyj Server-Sent Events do streamowania
     eventSource = new EventSource('/traffic/api/stream/');
     
     eventSource.onmessage = function(event) {
         const packet = JSON.parse(event.data);
         displayPacket(packet);
-        packetCount.textContent = `Packets: ${parseInt(packetCount.textContent.split(':')[1]) + 1 || 1}`;
     };
     
-    eventSource.onerror = function(error) {
-        console.error('SSE error:', error);
+    eventSource.onerror = function() {
         stopGenerator();
     };
 }
@@ -105,28 +109,34 @@ function stopGenerator() {
         eventSource = null;
     }
     
-    if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-    }
+    fetch('/traffic/api/stop/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.final_pcap) {
+            pcapFileCount++;
+            pcapCount.textContent = `PCAP files: ${pcapFileCount}`;
+        }
+    });
 }
 
 // Symulacja ataku
-function simulateAttack() {
-    fetch('/traffic/api/attack/?count=10')
+function simulateAttack(attackType = 'syn_flood') {
+    const count = attackType === 'dos' ? 50 : 10;
+    
+    fetch(`/traffic/api/attack/?count=${count}&type=${attackType}`)
         .then(response => response.json())
         .then(data => {
-            data.packets.forEach(packet => {
-                displayPacket(packet);
-            });
-            packetCount.textContent = `Packets: ${parseInt(packetCount.textContent.split(':')[1]) + data.packets_generated || data.packets_generated}`;
-        })
-        .catch(error => {
-            console.error('Error generating attack:', error);
+            data.packets.forEach(packet => displayPacket(packet));
+            pcapFileCount += data.pcap_files_saved || 0;
+            pcapCount.textContent = `PCAP files: ${pcapFileCount}`;
         });
 }
 
 // Event listeners
 startBtn.addEventListener('click', startGenerator);
 stopBtn.addEventListener('click', stopGenerator);
-attackBtn.addEventListener('click', simulateAttack);
+attackBtn.addEventListener('click', () => simulateAttack('syn_flood'));
+dosBtn.addEventListener('click', () => simulateAttack('dos'));

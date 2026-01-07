@@ -139,7 +139,7 @@
         </div>
     </div>
 
-    <!-- Model szczegółów alertu -->
+    <!-- Modal szczegółów alertu -->
     <div class="modal fade" id="alertDetailModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -233,7 +233,7 @@
             });
         });
 
-        // Weryfikacja alertu
+        // Weryfikacja alertu -> tworzy modal do zmiany statusu
         document.querySelectorAll('.btn-feedback').forEach(btn => {
             btn.addEventListener('click', function() {
                 currentAlertId = this.dataset.alertId;
@@ -250,7 +250,7 @@
             });
         });
 
-        // Zmiana statusu
+        // Zmiana statusu alertu
         document.querySelectorAll('.btn-set-status').forEach(btn => {
             btn.addEventListener('click', function() {
                 const newStatus = this.dataset.status;
