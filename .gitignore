@@ -6,4 +6,5 @@
 /.env
 /analytic_pipline/migrations/__pycache__/
 /analytic_pipline/__pycache__
-/MachineLearningCVE
+/analytic_pipline/MachineLearningCVE
+/analytic_pipline/TrafficLabelling_
