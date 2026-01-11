@@ -16,10 +16,18 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from django.views.generic import TemplateView
+from django.contrib.auth import views as auth_views
+from . import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', TemplateView.as_view(template_name='traffic_generator/index.html'), name='home'),
+    path('', views.dashboard, name='home'),
+    path('dashboard/', views.dashboard, name='dashboard'),
+    path('profile/', views.profile, name='profile'),
+    path('login/', auth_views.LoginView.as_view(), name='login'),
+    path('logout/', auth_views.LogoutView.as_view(next_page='login'), name='logout'),
     path('traffic/', include('traffic_generator.urls')),
+    # Alert API endpoints
+    path('api/alert/<int:alert_id>/', views.alert_detail, name='alert_detail'),
+    path('api/alert/<int:alert_id>/status/', views.alert_update_status, name='alert_update_status'),
 ]

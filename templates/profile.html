@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class="container py-4">
+        <div class="row">
+                <!-- Szczegóły użytkownika -->
+                <div class="col-lg-8 col-md-10 mx-auto">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-1"> User info </h5> 
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-borderless mb-0">
+                                <tr>
+                                    <th scope="row" style="width: 200px;">Username:</th>
+                                    <td>
+                                        {{ user.username }}
+                                        {% if user.is_superuser %}
+                                            <span class="badge bg-danger">Admin (Superuser)</span>
+                                        {% elif user.is_staff %}
+                                            <span class="badge bg-warning">Admin</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Regular staff</span>
+                                        {% endif %}      
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Email:</th>
+                                    <td>{{ user.email|default:"No data" }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">First name:</th>
+                                    <td>{{ user.first_name|default:"No data" }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Last name:</th>
+                                    <td>{{ user.last_name|default:"No data" }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Date joined:</th>
+                                    <td>{{ user.date_joined|date:"d.m.Y H:i" }}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Last login:</th>
+                                    <td>{{ user.last_login|date:"d.m.Y H:i"|default:"No data" }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Uprawnienia -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0"> Permissions</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if user.is_superuser %}
+                        <div class="alert alert-danger mb-3">
+                            <strong>System Administrator</strong> - Full access to all features.
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.groups.all %}
+                        <ul class="list-group mb-3">
+                            {% for group in user.groups.all %}
+                            <li class="list-group-item">{{ group.name }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="text-muted">No assigned groups.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                
+        </div>
+    </div>
+{% endblock %}
