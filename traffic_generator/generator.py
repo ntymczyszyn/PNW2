@@ -17,6 +17,23 @@ conf.verb = 0
 fake = Faker()
 
 DEFAULT_PCAP_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'pcap_files')
+
+# Import predictora (lazy load żeby nie blokować importu jeśli model nie istnieje) ~ZUZA
+_predictor = None
+
+def get_predictor():
+    """Lazy load predictora."""
+    global _predictor
+    if _predictor is None:
+        try:
+            from analytic_pipline.traffic_predictor import predict_flow
+            _predictor = predict_flow
+        except Exception as e:
+            print(f"Warning: Could not load traffic predictor: {e}")
+            _predictor = lambda x: None  # Dummy function
+    return _predictor
+
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
@@ -487,9 +504,14 @@ class TrafficGenerator:
         """
         self._stop_event.clear()
         generated = 0
+        
         while (count is None or generated < count) and not self._stop_event.is_set():
             packets, features = self.generate_flow()
             saved_file = self.add_packets_to_buffer(packets)
+            
+            # Predykcja przepływu ~ZUZA
+            prediction = self.predict_flow(packets[0])
+            
             yield features, saved_file
             generated += 1
             if interval > 0:
@@ -535,6 +557,10 @@ class TrafficGenerator:
                 'attack_type': 'SYN Flood / Port Scan',
                 'flow_type': 'attack',
             }
+            
+            # Predykcja zastanawaim sie tylko ze chyba to nie tu powinna być,
+            # ale tak bedzie najłatwiej na start i prototyp xd ~ZUZA 
+            prediction = self.predict_flow(syn) 
             
             saved_file = self.add_packet_to_buffer(syn)
             yield features, saved_file
@@ -584,6 +610,7 @@ class TrafficGenerator:
                 'flow_type': 'attack',
             }
             
+            prediction = self.predict_flow(pkt) # Predykcja ZUZA
             saved_file = self.add_packet_to_buffer(pkt)
             yield features, saved_file
             
@@ -607,7 +634,15 @@ class TrafficGenerator:
                 'pcap_folder': self.pcap_folder
             }
 
-
+    def predict_flow(self, pacaket):
+        """Predykcja przepływu za pomocą załadowanego modelu."""
+        predictor = get_predictor()
+        if predictor:
+            try:
+                return predictor(pacaket)
+            except Exception as e:
+                print(f"Prediction error: {e}")
+        return None
 # Singleton instance
 traffic_generator = TrafficGenerator()
 
