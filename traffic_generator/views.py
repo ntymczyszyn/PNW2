@@ -17,12 +17,12 @@ def notify_analytics(pcap_info):
     if not pcap_info:
         return
     
-    print(f"[PCAP] Wysyłam do analytics: {pcap_info.get('filename')} ({pcap_info.get('packet_count')} packets)")
+    print(f"[PCAP] Wysyłam do analyics: {pcap_info.get('filename')} ({pcap_info.get('packet_count')} packets)")
     
     # TODO: Odkomentuj gdy analytic_pipeline będzie miał endpoint API
     # try:
     #     response = requests.post(ANALYTICS_API_URL, json=pcap_info, timeout=5)
-    #     print(f"[PCAP] Analytics response: {response.status_code}")
+    #     print(f"[PCAP] Analytics retsponse: {response.status_code}")
     # except Exception as e:
     #     print(f"[PCAP] Error sending to analytics: {e}")
 

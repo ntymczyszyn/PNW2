@@ -1,53 +1,62 @@
 from cicflowmeter.sniffer import create_sniffer
+from scapy.utils import wrpcap
+import pandas as pd
+import tempfile
 import os
-from scapy.all import rdpcap
 
-from scapy.all import sniff
 
-pkts = rdpcap("S:\\PWR\\PNW\\PNW2\\pcap_files\\traffic_20260111_160419_0.pcap")
-print("Packets:", len(pkts))
+def packets_to_cic_df(packets):
 
-exit()
-# Ensure output directory exists
-output_dir = 'S:\\PWR\\PNW\\PNW2\\csv_files'
-os.makedirs(output_dir, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        pcap_path = os.path.join(tmp, "flow.pcap")
+        csv_path = os.path.join(tmp, "flow.csv")
 
-# Create sniffer with correct parameters
-# create_sniffer returns (sniffer, session)
-sniffer = create_sniffer(
-    input_file='S:\\PWR\\PNW\\PNW2\\pcap_files\\traffic_20260111_160419_0.pcap',
-    input_interface=None,
-    output_mode="csv",  # Must be "csv" or "url"
-    output_file='S:\\PWR\\PNW\\PNW2\\csv_files\\traffic_20260111_160419_0.csv'
-    )
+        # 1) Save packets to temp PCAP
+        wrpcap(pcap_path, packets)
 
-print(f"Starting PCAP processing...")
-print(f"Output will be saved to: S:\\PWR\\PNW\\PNW2\\csv_files\\")
+        # 2) Run CICFlowMeter
+        ret = create_sniffer(
+            input_file=pcap_path,
+            input_interface=None,
+            output_mode="csv",
+            output=csv_path,
+            fields=None,
+            verbose=False
+        )
 
-# Start the sniffer
-sniffer.start()
+        if isinstance(ret, (list, tuple)):
+            sniffer_thread, session = ret[0], (ret[1] if len(ret) > 1 else None)
+        else:
+            sniffer_thread, session = ret, None
 
-try:
-    # Wait for completion
-    sniffer.join()
-    print(f"\nProcessing complete! Check the CSV files in:")
-    print(f"S:\\PWR\\PNW\\PNW2\\csv_files\\")
-    
-except KeyboardInterrupt:
-    print('\nStopping the sniffer...')
-    sniffer.stop()
-    sniffer.join()
-    
-except Exception as e:
-    print(f"\nError occurred: {e}")
-    import traceback
-    traceback.print_exc()
-    sniffer.stop()
+        try:
+            sniffer_thread.start()
+            sniffer_thread.join()
 
-# finally:
-#     # Stop periodic GC if present
-#     if hasattr(session, "_gc_stop"):
-#         session._gc_stop.set()
-#         session._gc_thread.join(timeout=2.0)
-#     # Flush all flows at the end
-#     session.flush_flows()
+            # jeśli sesja ma flush (czasami przydaje się wymusić)
+            if session is not None and hasattr(session, "flush_flows"):
+                try:
+                    session.flush_flows()
+                except Exception:
+                    pass
+
+            # Jeśli dokładny csv_path nie istnieje, znajdź pierwszy CSV w tmp
+            if not os.path.exists(csv_path):
+                cvs = [os.path.join(tmp, f) for f in os.listdir(tmp) if f.lower().endswith('.csv')]
+                if cvs:
+                    csv_path = cvs[0]
+                else:
+                    raise RuntimeError("CICFlowMeter did not generate CSV")
+
+            df = pd.read_csv(csv_path)
+            df.columns = df.columns.str.strip()
+            return df
+
+        finally:
+            # upewnij się, że sniffer zatrzymany
+            try:
+                if hasattr(sniffer_thread, "stop"):
+                    sniffer_thread.stop()
+                    sniffer_thread.join(timeout=1.0)
+            except Exception:
+                pass

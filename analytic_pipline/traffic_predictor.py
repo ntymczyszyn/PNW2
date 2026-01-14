@@ -16,8 +16,7 @@ import numpy as np
 import logging
 from pathlib import Path
 from datetime import datetime
-from sklearn.decomposition import PCA
-
+from .test_parser import packets_to_cic_df
 # Django setup
 import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'network_monitor.settings')
@@ -32,25 +31,25 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / 'analytic_pipline' / 'one_class_svm_model.pkl'
 
-# Features required by model (based on notebook)
-REQUIRED_FEATURES = [
-    'Bwd Packet Length Std', 
-    'Bwd Packet Length Max', 
-    'Bwd Packet Length Mean', 
-    'Avg Bwd Segment Size', 
-    'Packet Length Std', 
-    'Max Packet Length', 
-    'Packet Length Variance', 
-    'Average Packet Size',
-    'Packet Length Mean',
-    'Fwd IAT Std',
-    'Idle Max',
-    'Flow IAT Max',
-    'Idle Mean',
-    'Fwd IAT Max',
-    'Idle Min',
-    'Flow IAT Std'
-]
+#Features required by model (based on notebook)
+FEATURE_MAP = {
+    'bwd_pkt_len_std':   ' Bwd Packet Length Std',
+    'bwd_pkt_len_max':   'Bwd Packet Length Max',
+    'bwd_pkt_len_mean':  ' Bwd Packet Length Mean',
+    'bwd_seg_size_avg':  ' Avg Bwd Segment Size',
+    'pkt_len_std':       ' Packet Length Std',
+    'pkt_len_max':       ' Max Packet Length',
+    'pkt_len_var':       ' Packet Length Variance',
+    'pkt_size_avg':      ' Average Packet Size',
+    'pkt_len_mean':      ' Packet Length Mean',
+    'fwd_iat_std':       ' Fwd IAT Std',
+    'idle_max':         ' Idle Max',
+    'flow_iat_max':     ' Flow IAT Max',
+    'idle_mean':        'Idle Mean',
+    'fwd_iat_max':      ' Fwd IAT Max',
+    'idle_min':         ' Idle Min',
+    'flow_iat_std':     ' Flow IAT Std'
+}
 
 _model_cache = {'model': None, 'scaler': None, 'loaded': False}
 
@@ -85,183 +84,6 @@ def load_model():
         return None, None
 
 
-def extract_features_from_flow(flow_data):
-    """
-    Konwertuje flow_data z traffic_generator na features DataFrame.
-    
-    Args:
-        flow_data (dict): Dane flow z traffic_generator
-        
-    Returns:
-        pd.DataFrame: DataFrame z features (1 row)
-    """
-    # cechy musza zostać wyciagniete z głowego pakiety potrzbe cicflowmeter
-
-
-
-    # Mapuj dane z traffic_generator na features wymagane przez model
-    features = {}
-    
-    # Packet length statistics
-    pkt_len = flow_data.get('packet_size', 0)
-    features['Bwd Packet Length Std'] = flow_data.get('bwd_packet_length_std', 0)
-    features['Bwd Packet Length Max'] = flow_data.get('bwd_packet_length_max', 0)
-    features['Bwd Packet Length Mean'] = flow_data.get('bwd_packet_length_mean', 0)
-    features['Avg Bwd Segment Size'] = flow_data.get('avg_bwd_segment_size', 0)
-    features['Packet Length Std'] = flow_data.get('packet_length_std', 0)
-    features['Max Packet Length'] = flow_data.get('max_packet_length', pkt_len)
-    features['Packet Length Variance'] = flow_data.get('packet_length_variance', 0)
-    features['Average Packet Size'] = flow_data.get('average_packet_size', pkt_len)
-    features['Packet Length Mean'] = flow_data.get('packet_length_mean', pkt_len)
-    
-    # IAT (Inter-Arrival Time) statistics
-    features['Fwd IAT Std'] = flow_data.get('fwd_iat_std', 0)
-    features['Fwd IAT Max'] = flow_data.get('fwd_iat_max', 0)
-    features['Flow IAT Max'] = flow_data.get('flow_iat_max', 0)
-    features['Flow IAT Std'] = flow_data.get('flow_iat_std', 0)
-    
-    # Idle time statistics
-    features['Idle Max'] = flow_data.get('idle_max', 0)
-    features['Idle Mean'] = flow_data.get('idle_mean', 0)
-    features['Idle Min'] = flow_data.get('idle_min', 0)
-    
-    return pd.DataFrame([features])
-
-
-def preprocess_features(df):
-    """
-    Preprocessing: clean data, handle NaN/inf.
-    
-    Args:
-        df (pd.DataFrame): Raw features
-        
-    Returns:
-        pd.DataFrame: Cleaned features
-    """
-    try:
-        # Strip column names
-        df.columns = df.columns.str.strip()
-        
-        # Keep only required features
-        missing_cols = [col for col in REQUIRED_FEATURES if col not in df.columns]
-        if missing_cols:
-            for col in missing_cols:
-                df[col] = 0
-        
-        df = df[REQUIRED_FEATURES]
-        
-        # Handle infinity and NaN
-        df = df.replace([np.inf, -np.inf], np.nan)
-        df = df.fillna(0)
-        
-        # Ensure numeric
-        for col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        df = df.fillna(0)
-        
-        return df
-        
-    except Exception as e:
-        logger.error(f"Error preprocessing: {e}")
-        return None
-
-
-def apply_scale(X, scaler):
-    """
-        X (pd.DataFrame): Feature matrix
-        scaler: Fitted scaler
-        n_components (int): Number of PCA components
-        
-    Returns:
-        np.ndarray: Transformed and scaled features
-    """
-    try:
-        # Scale
-        X_scaled = scaler.transform(X)
-        
-        return X_scaled
-        
-    except Exception as e:
-        logger.error(f"Error in PCA/scaling: {e}")
-        return None
-
-
-def predict_flow(flow_data):
-    """
-    GŁÓWNA FUNKCJA - wywołaj tę funkcję z traffic_generator!
-    
-    Przetwarza flow, robi predykcję i zapisuje do bazy jeśli wykryje atak.
-    
-    Args:
-        flow_data (dict): Słownik z danymi flow z traffic_generator
-        
-    Returns:
-        dict: {'prediction': 1/-1, 'label': 'BENIGN'/'ATTACK', 
-               'confidence': float, 'is_attack': bool}
-        lub None jeśli błąd
-    
-    Example:
-        >>> flow = {
-        ...     'source_ip': '192.168.1.1',
-        ...     'dest_ip': '10.0.0.1',
-        ...     'packet_size': 1500,
-        ...     'protocol': 'TCP',
-        ...     ...
-        ... }
-        >>> result = predict_flow(flow)
-        >>> if result and result['is_attack']:
-        ...     print("ATTACK!")
-    """
-    try:
-        # 1. Load model
-        model, scaler = load_model()
-        if model is None:
-            logger.error("Model not loaded")
-            return None
-        
-        # 2. Extract features
-        df = extract_features_from_flow(flow_data)
-        if df is None or df.empty:
-            logger.error("Failed to extract features")
-            return None
-        
-        # 3. Preprocess
-        df_clean = preprocess_features(df)
-        if df_clean is None or df_clean.empty:
-            logger.error("Failed to preprocess")
-            return None
-        
-        # 4. Apply scaling
-        X_scaled = apply_scale(df_clean, scaler)
-        if X_scaled is None:
-            logger.error("Failed to transform features")
-            return None
-        
-        # 5. Predict
-        prediction = model.predict(X_scaled)[0]  # 1 = BENIGN, -1 = ATTACK
-        decision_score = model.decision_function(X_scaled)[0]
-        
-        result = {
-            'prediction': int(prediction),
-            'label': 'BENIGN' if prediction == 1 else 'ATTACK',
-            'confidence': float(abs(decision_score)),
-            'is_attack': bool(prediction == -1)
-        }
-        
-        # 6. Jeśli ATTACK - zapisz do bazy
-        if result['is_attack']:
-            save_attack_to_db(flow_data, prediction, decision_score)
-            logger.warning(f"🚨 ATTACK DETECTED: {flow_data.get('source_ip')} → {flow_data.get('dest_ip')}")
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error in predict_flow: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
 def save_attack_to_db(flow_data, prediction, confidence):
     """
     Zapisuje wykryty atak do bazy danych Django.
@@ -272,16 +94,21 @@ def save_attack_to_db(flow_data, prediction, confidence):
         confidence (float): Decision function score
     """
     try:
-        alert = Alert.objects.create(
-            source_ip=flow_data.get('source_ip', 'unknown'),
-            destination_ip=flow_data.get('dest_ip', 'unknown'),
-            anomaly_score=abs(confidence),  # Confidence z modelu
-            protocol=flow_data.get('protocol', 'TCP'),
-            source_port=flow_data.get('source_port'),
-            destination_port=flow_data.get('dest_port'),
-            packet_size=flow_data.get('packet_size'),
-            description=f"Attack detected by One-Class SVM (score: {prediction})",
-            feedback_status=Alert.FeedbackStatus.PENDING
+        alert, created = Alert.objects.get_or_create(
+            source_ip=flow_data.get('src_ip', 'unknown'),
+            destination_ip=flow_data.get('dst_ip', 'unknown'),
+            anomaly_score=float(abs(confidence)),
+            protocol=str(flow_data.get('protocol')),
+            source_port=int(flow_data.get('src_port')) if pd.notna(flow_data.get('src_port')) else None,
+            destination_port=int(flow_data.get('dst_port')) if pd.notna(flow_data.get('dst_port')) else None,
+            packet_size=int(flow_data.get('pkt_len_mean', 0)),
+            description=(
+                f"CICFlow anomaly: "
+                f"flowsize={flow_data.get('flow_bytes')} "
+                f"pkts={flow_data.get('tot_fwd_pkts', 0) + flow_data.get('tot_bwd_pkts', 0)} "
+                f"score={confidence:.4f}"
+            ),
+            feedback_status=0  # Pending
         )
         logger.info(f"✓ Attack saved to DB: ID={alert.id}")
         
@@ -289,6 +116,52 @@ def save_attack_to_db(flow_data, prediction, confidence):
         logger.error(f"✗ Error saving attack to DB: {e}")
         import traceback
         traceback.print_exc()
+
+
+
+def predict_packets(packets):
+    """
+    packets = list[scapy.Packet]
+    Zwraca ALERT jeśli dowolny flow jest atakiem
+    """
+    try:
+        model, scaler = load_model()
+        if model is None:
+            return None
+        
+        df = packets_to_cic_df(packets)
+
+        if df is None or df.empty:
+            return None
+        
+        # wymagane cechy
+        X = df[list(FEATURE_MAP.keys())].copy()
+        X.rename(columns=FEATURE_MAP, inplace=True)
+        X = X.replace([np.inf, -np.inf], np.nan)
+        X = X.fillna(0)
+        X_scaled = scaler.transform(X)
+        preds = model.predict(X_scaled)
+        scores = model.decision_function(X_scaled)
+
+        alerts = preds == -1
+
+        if alerts.any():
+            for i in np.where(alerts)[0]:
+                flow = df.iloc[i].to_dict()
+                save_attack_to_db(flow, preds[i], scores[i])
+
+        return {
+            "flows": len(df),
+            "attacks": len(alerts),
+            "is_attack": len(alerts) > 0,
+            "details": alerts
+        }
+
+    except Exception as e:
+        logger.error(f"CIC pipeline failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 # ==============================================================================

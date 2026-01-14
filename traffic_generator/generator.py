@@ -26,8 +26,8 @@ def get_predictor():
     global _predictor
     if _predictor is None:
         try:
-            from analytic_pipline.traffic_predictor import predict_flow
-            _predictor = predict_flow
+            from analytic_pipline.traffic_predictor import predict_packets
+            _predictor = predict_packets
         except Exception as e:
             print(f"Warning: Could not load traffic predictor: {e}")
             _predictor = lambda x: None  # Dummy function
@@ -510,7 +510,7 @@ class TrafficGenerator:
             saved_file = self.add_packets_to_buffer(packets)
             
             # Predykcja przepływu ~ZUZA
-            prediction = self.predict_flow(packets[0])
+            prediction = self.predict_packet(packets)
             
             yield features, saved_file
             generated += 1
@@ -532,7 +532,7 @@ class TrafficGenerator:
         target_ip = fake.ipv4()
         target_port = random.choice(self.common_ports)
         target_mac = self._generate_mac()
-        
+        packets = []
         for i in range(count):
             # Różne źródła (spoofed IPs)
             src_ip = fake.ipv4()
@@ -558,15 +558,16 @@ class TrafficGenerator:
                 'flow_type': 'attack',
             }
             
-            # Predykcja zastanawaim sie tylko ze chyba to nie tu powinna być,
-            # ale tak bedzie najłatwiej na start i prototyp xd ~ZUZA 
-            prediction = self.predict_flow(syn) 
-            
+            packets.append(syn)
             saved_file = self.add_packet_to_buffer(syn)
             yield features, saved_file
             
             if interval > 0:
                 time.sleep(interval)
+        # Predykcja zastanawaim sie tylko ze chyba to nie tu powinna być,
+        # ale tak bedzie najłatwiej na start i prototyp xd ~ZUZA 
+        prediction = self.predict_packet(packets) 
+
     
     def generate_dos_attack(self, count=50, interval=0.01):
         """
@@ -610,12 +611,14 @@ class TrafficGenerator:
                 'flow_type': 'attack',
             }
             
-            prediction = self.predict_flow(pkt) # Predykcja ZUZA
             saved_file = self.add_packet_to_buffer(pkt)
             yield features, saved_file
             
             if interval > 0:
                 time.sleep(interval)
+
+        prediction = self.predict_packet(pkt) # Predykcja ZUZA
+
     
     def stop(self):
         """Zatrzymuje generator i zapisuje pozostałe pakiety."""
@@ -634,7 +637,7 @@ class TrafficGenerator:
                 'pcap_folder': self.pcap_folder
             }
 
-    def predict_flow(self, pacaket):
+    def predict_packet(self, pacaket):
         """Predykcja przepływu za pomocą załadowanego modelu."""
         predictor = get_predictor()
         if predictor:
