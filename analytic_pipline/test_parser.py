@@ -11,10 +11,10 @@ def packets_to_cic_df(packets):
         pcap_path = os.path.join(tmp, "flow.pcap")
         csv_path = os.path.join(tmp, "flow.csv")
 
-        # 1) Save packets to temp PCAP
+        # tworzenie tymczasowego PCAP
         wrpcap(pcap_path, packets)
 
-        # 2) Run CICFlowMeter
+        #CICFlowMeter
         ret = create_sniffer(
             input_file=pcap_path,
             input_interface=None,
@@ -33,14 +33,12 @@ def packets_to_cic_df(packets):
             sniffer_thread.start()
             sniffer_thread.join()
 
-            # jeśli sesja ma flush (czasami przydaje się wymusić)
             if session is not None and hasattr(session, "flush_flows"):
                 try:
                     session.flush_flows()
                 except Exception:
                     pass
 
-            # Jeśli dokładny csv_path nie istnieje, znajdź pierwszy CSV w tmp
             if not os.path.exists(csv_path):
                 cvs = [os.path.join(tmp, f) for f in os.listdir(tmp) if f.lower().endswith('.csv')]
                 if cvs:
@@ -53,7 +51,6 @@ def packets_to_cic_df(packets):
             return df
 
         finally:
-            # upewnij się, że sniffer zatrzymany
             try:
                 if hasattr(sniffer_thread, "stop"):
                     sniffer_thread.stop()

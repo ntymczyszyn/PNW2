@@ -17,21 +17,20 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from .test_parser import packets_to_cic_df
-# Django setup
+
 import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'network_monitor.settings')
 django.setup()
 
 from network_monitor.models import Alert
 
-# Setup logging
+
 logger = logging.getLogger(__name__)
 
-# Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / 'analytic_pipline' / 'one_class_svm_model.pkl'
 
-#Features required by model (based on notebook)
+# Mapowanie cech z CICFlowMeter na używane w modelu
 FEATURE_MAP = {
     'bwd_pkt_len_std':   ' Bwd Packet Length Std',
     'bwd_pkt_len_max':   'Bwd Packet Length Max',
@@ -87,11 +86,6 @@ def load_model():
 def save_attack_to_db(flow_data, prediction, confidence):
     """
     Zapisuje wykryty atak do bazy danych Django.
-    
-    Args:
-        flow_data (dict): Dane flow
-        prediction (int): -1 (attack)
-        confidence (float): Decision function score
     """
     try:
         alert, created = Alert.objects.get_or_create(
@@ -108,7 +102,7 @@ def save_attack_to_db(flow_data, prediction, confidence):
                 f"pkts={flow_data.get('tot_fwd_pkts', 0) + flow_data.get('tot_bwd_pkts', 0)} "
                 f"score={confidence:.4f}"
             ),
-            feedback_status=0  # Pending
+            feedback_status=0  
         )
         logger.info(f"✓ Attack saved to DB: ID={alert.id}")
         
@@ -164,30 +158,13 @@ def predict_packets(packets):
         return None
 
 
-# ==============================================================================
-# API funkcje (dla celów testowania/integracji)
-# ==============================================================================
 
 def get_recent_attacks(limit=10):
-    """
-    Pobierz ostatnie wykryte ataki z bazy.
-    
-    Args:
-        limit (int): Maksymalna liczba wyników
-        
-    Returns:
-        QuerySet: Lista Alert obiektów
-    """
     return Alert.objects.all()[:limit]
 
 
 def get_attack_statistics():
-    """
-    Pobierz statystyki ataków.
     
-    Returns:
-        dict: Statystyki
-    """
     from django.db.models import Count, Avg
     from django.utils import timezone
     from datetime import timedelta

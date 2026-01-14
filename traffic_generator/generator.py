@@ -509,7 +509,7 @@ class TrafficGenerator:
             packets, features = self.generate_flow()
             saved_file = self.add_packets_to_buffer(packets)
             
-            # Predykcja przepływu ~ZUZA
+            # ~Z
             prediction = self.predict_packet(packets)
             
             yield features, saved_file
@@ -564,8 +564,7 @@ class TrafficGenerator:
             
             if interval > 0:
                 time.sleep(interval)
-        # Predykcja zastanawaim sie tylko ze chyba to nie tu powinna być,
-        # ale tak bedzie najłatwiej na start i prototyp xd ~ZUZA 
+        # ~Z
         prediction = self.predict_packet(packets) 
 
     
@@ -617,7 +616,7 @@ class TrafficGenerator:
             if interval > 0:
                 time.sleep(interval)
 
-        prediction = self.predict_packet(pkt) # Predykcja ZUZA
+        prediction = self.predict_packet(pkt) # ~Z
 
     
     def stop(self):
