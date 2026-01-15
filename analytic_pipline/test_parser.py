@@ -5,14 +5,14 @@ import tempfile
 import os
 
 
-def packets_to_cic_df(packets):
+def packets_to_cic_df(pcap_path):
 
     with tempfile.TemporaryDirectory() as tmp:
-        pcap_path = os.path.join(tmp, "flow.pcap")
+        #pcap_path = os.path.join(tmp, "flow.pcap")
         csv_path = os.path.join(tmp, "flow.csv")
 
         # tworzenie tymczasowego PCAP
-        wrpcap(pcap_path, packets)
+        #wrpcap(pcap_path, packets)
 
         #CICFlowMeter
         ret = create_sniffer(
@@ -57,3 +57,22 @@ def packets_to_cic_df(packets):
                     sniffer_thread.join(timeout=1.0)
             except Exception:
                 pass
+
+def process_stream_features(features_dict):
+    """
+    Przetwarza features przychodzące ze stream_packets
+    Konwertuje je na format kompatybilny z traffic_predictor
+    """
+    if not features_dict:
+        return None
+    
+    df = pd.DataFrame([features_dict])
+    
+    # Czyszczenie kolumn
+    df.columns = df.columns.str.strip()
+    
+    # Zamiana nieskończoności na NaN, NaN na 0
+    df = df.replace([float('inf'), float('-inf')], float('nan'))
+    df = df.fillna(0)
+    
+    return df

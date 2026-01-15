@@ -1,7 +1,7 @@
 """
 URL routing dla generatora ruchu.
 """
-from django.urls import path
+from django.urls import include, path
 from . import views
 
 app_name = 'traffic_generator'
@@ -13,6 +13,7 @@ urlpatterns = [
     path('api/stop/', views.stop_generator, name='stop_generator'),
     path('api/attack/', views.generate_attack, name='generate_attack'),
     path('api/analytics/', views.analytics_status, name='analytics_status'),
+    path('analytics/', include('analytic_pipline.urls')),
 ]
 
 

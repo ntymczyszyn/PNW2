@@ -3,11 +3,11 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+import requests
 from .generator import traffic_generator
 
 # URL do analytic_pipeline API (do konfiguracji)
-ANALYTICS_API_URL = "http://localhost:8000/analytics/api/pcap/"
-
+ANALYTICS_API_URL = "http://localhost:8000/analytics/process/"
 
 def notify_analytics(pcap_info):
     """
@@ -20,11 +20,11 @@ def notify_analytics(pcap_info):
     print(f"[PCAP] Wysyłam do analyics: {pcap_info.get('filename')} ({pcap_info.get('packet_count')} packets)")
     
     # TODO: Odkomentuj gdy analytic_pipeline będzie miał endpoint API
-    # try:
-    #     response = requests.post(ANALYTICS_API_URL, json=pcap_info, timeout=5)
-    #     print(f"[PCAP] Analytics retsponse: {response.status_code}")
-    # except Exception as e:
-    #     print(f"[PCAP] Error sending to analytics: {e}")
+    try:
+        response = requests.post(ANALYTICS_API_URL, json=pcap_info, timeout=5)
+        print(f"[PCAP] Analytics retsponse: {response.status_code}")
+    except Exception as e:
+        print(f"[PCAP] Error sending to analytics: {e}")
 
 
 def generator(request):

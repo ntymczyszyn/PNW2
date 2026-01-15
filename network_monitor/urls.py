@@ -30,4 +30,5 @@ urlpatterns = [
     # Alert API endpoints
     path('api/alert/<int:alert_id>/', views.alert_detail, name='alert_detail'),
     path('api/alert/<int:alert_id>/status/', views.alert_update_status, name='alert_update_status'),
+    path('analytics/', include('analytic_pipline.urls')),
 ]

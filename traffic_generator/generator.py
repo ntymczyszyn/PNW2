@@ -510,7 +510,7 @@ class TrafficGenerator:
             saved_file = self.add_packets_to_buffer(packets)
             
             # ~Z
-            prediction = self.predict_packet(packets)
+            #prediction = self.predict_packet(packets)
             
             yield features, saved_file
             generated += 1
@@ -565,7 +565,7 @@ class TrafficGenerator:
             if interval > 0:
                 time.sleep(interval)
         # ~Z
-        prediction = self.predict_packet(packets) 
+        #prediction = self.predict_packet(packets) 
 
     
     def generate_dos_attack(self, count=50, interval=0.01):
@@ -616,7 +616,7 @@ class TrafficGenerator:
             if interval > 0:
                 time.sleep(interval)
 
-        prediction = self.predict_packet(pkt) # ~Z
+        #prediction = self.predict_packet(pkt) # ~Z
 
     
     def stop(self):

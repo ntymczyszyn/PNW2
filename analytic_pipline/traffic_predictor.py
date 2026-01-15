@@ -113,17 +113,17 @@ def save_attack_to_db(flow_data, prediction, confidence):
 
 
 
-def predict_packets(packets):
+def predict_packets(pcap_path):
     """
-    packets = list[scapy.Packet]
+    pcap_path = str
     Zwraca ALERT jeśli dowolny flow jest atakiem
     """
     try:
         model, scaler = load_model()
         if model is None:
             return None
-        
-        df = packets_to_cic_df(packets)
+        pcap_full_path = f'/home/dfir/PWR/PNW2/pcap_files/{pcap_path}'
+        df = packets_to_cic_df(pcap_full_path)
 
         if df is None or df.empty:
             return None
@@ -138,17 +138,19 @@ def predict_packets(packets):
         scores = model.decision_function(X_scaled)
 
         alerts = preds == -1
-
+        saved_count = 0
         if alerts.any():
             for i in np.where(alerts)[0]:
                 flow = df.iloc[i].to_dict()
                 save_attack_to_db(flow, preds[i], scores[i])
+                saved_count += 1
 
         return {
             "flows": len(df),
-            "attacks": len(alerts),
-            "is_attack": len(alerts) > 0,
-            "details": alerts
+            "attacks": saved_count,
+            "is_attack": saved_count > 0,
+            "attack_indices": np.where(alerts)[0].tolist(),
+            "confidence_scores": scores.tolist()
         }
 
     except Exception as e:
