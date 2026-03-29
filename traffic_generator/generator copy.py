@@ -36,12 +36,7 @@ CONTENT_TYPES = [
     "text/html", "application/json", "text/plain", "text/css", 
     "application/javascript", "image/png", "image/jpeg",
 ]
-CICIDS_FLOW_CONFIG = {
-    "http_requests_per_session": (1, 8),      # dla normalnych
-    "packet_delay": (0.0001, 0.008),          # jeszcze mniejsze
-    "server_delay": (0.002, 0.1),
-    "payload_size": (0, 180),                 # czasem 0 (czysty handshake)
-}
+
 
 def generate_random_http_request():
     method = random.choice(["GET", "POST", "PUT", "DELETE", "HEAD"])
@@ -159,7 +154,7 @@ def generate_random_dns_response(query):
 class TrafficGenerator:
     
     def __init__(self):
-        self.protocols = ['TCP'] * 90 + ['UDP'] * 8 + ['ICMP'] * 2
+        self.protocols = ['TCP', 'UDP', 'ICMP']
         self.common_ports = [80, 443, 22, 21, 25, 53, 8080, 3306, 5432]
         self.packet_buffer = []  # Bufor na pakiety Scapy do zapisu
         self.pcap_folder = DEFAULT_PCAP_FOLDER
@@ -221,195 +216,115 @@ class TrafficGenerator:
         """
         packets = []
         
-        current_time = time.time()
-        rand = random.random()
-        if rand < 0.65:          # 65% mikro-flowy (obniża mean Fwd Packets)
-            flow_type = "micro"
-        elif rand < 0.67:        # 2% BARDZO długie sesje (ciągnie mean Duration do ~10-12s)
-            flow_type = "long"
-        else:
-            flow_type = "normal"
-
-        win_size = random.choice([8192, 16384, 32768, 65535]) 
+        # Sekwencje TCP
         client_seq = random.randint(1000, 100000)
         server_seq = random.randint(1000, 100000)
         
         # 1. SYN (Client -> Server)
         syn = Ether(src=src_mac, dst=dst_mac) / \
               IP(src=src_ip, dst=dst_ip, ttl=64) / \
-              TCP(sport=src_port, dport=dst_port, flags='S', seq=client_seq, window=win_size)
-        syn.time = current_time
+              TCP(sport=src_port, dport=dst_port, flags='S', seq=client_seq)
         packets.append(syn)
         
         # Małe opóźnienie symulujące RTT
-        time.sleep(random.expovariate(1.0 / 0.005))
-        current_time += random.expovariate(1.0 / 0.01)
+        time.sleep(random.uniform(0.001, 0.01))
+        
         # 2. SYN-ACK (Server -> Client)
         syn_ack = Ether(src=dst_mac, dst=src_mac) / \
                   IP(src=dst_ip, dst=src_ip, ttl=64) / \
                   TCP(sport=dst_port, dport=src_port, flags='SA', 
-                      seq=server_seq, ack=client_seq + 1, window=win_size)
-        syn_ack.time = current_time
+                      seq=server_seq, ack=client_seq + 1)
         packets.append(syn_ack)
-        current_time += random.expovariate(1.0 / 0.01)
-        time.sleep(random.expovariate(1.0 / 0.03))
+        
+        time.sleep(random.uniform(0.001, 0.01))
         
         # 3. ACK (Client -> Server) - zakończenie handshake
         client_seq += 1
         ack = Ether(src=src_mac, dst=dst_mac) / \
               IP(src=src_ip, dst=dst_ip, ttl=64) / \
               TCP(sport=src_port, dport=dst_port, flags='A', 
-                  seq=client_seq, ack=server_seq + 1, window=win_size)
-        ack.time = current_time
+                  seq=client_seq, ack=server_seq + 1)
         packets.append(ack)
-        current_time += random.expovariate(1.0 / 0.015)
+        
         server_seq += 1
-
-        if flow_type == "micro":
-        # 90% czystych mikro (tylko handshake)
-            if random.random() < 0.92:
-                # od razu szybkie zamknięcie
-                time.sleep(random.expovariate(1.0 / 0.008))  # bardzo szybko
-                current_time += random.expovariate(1.0 / 0.01)
+        
+        if include_data:
+            time.sleep(random.uniform(0.001, 0.05))
+            
+            # 4. Dane od klienta (Request)
+            if service_type == 'http' and dst_port in [80, 8080]:
+                request_data = generate_random_http_request()
             else:
-                # 10% mikro + 1 szybki request/response
-                request_data = generate_random_http_request() if dst_port in [80, 8080] else \
-                            bytes([random.randint(32,126) for _ in range(60)])
-                
-                request = Ether(src=src_mac, dst=dst_mac) / \
-                        IP(src=src_ip, dst=dst_ip, ttl=64) / \
-                        TCP(sport=src_port, dport=dst_port, flags='PA',
-                            seq=client_seq, ack=server_seq, window=win_size) / \
-                        Raw(load=request_data)
-                request.time = current_time
-                packets.append(request)
-                client_seq += len(request_data)
-                current_time += random.expovariate(1.0 / 0.01)
-                
-                # szybka odpowiedź
-                response_data = generate_random_http_response() if dst_port in [80, 8080] else \
-                                bytes([random.randint(32,126) for _ in range(80)])
-                response = Ether(src=dst_mac, dst=src_mac) / \
-                        IP(src=dst_ip, dst=src_ip, ttl=64) / \
-                        TCP(sport=dst_port, dport=src_port, flags='PA',
-                            seq=server_seq, ack=client_seq, window=win_size) / \
-                        Raw(load=response_data)
-                response.time = current_time
-                packets.append(response)
-                server_seq += len(response_data)
-                current_time += random.expovariate(1.0 / 0.015)
-
-        elif flow_type == "long":
-            request_count = random.randint(60, 350)
-            for _ in range(request_count):
-
-                iat = random.expovariate(1.0 / 0.08)  
-                time.sleep(iat)
-                current_time += iat
-                # REQUEST
-                if service_type == 'http' and dst_port in [80, 8080]:
-                    request_data = generate_random_http_request()
-                else:
-                    request_data = bytes([random.randint(32,126) for _ in range(random.randint(50,400))])
-
-                request = Ether(src=src_mac, dst=dst_mac) / \
-                        IP(src=src_ip, dst=dst_ip, ttl=64) / \
-                        TCP(sport=src_port, dport=dst_port, flags='PA',
-                            seq=client_seq, ack=server_seq, window=win_size) / \
-                        Raw(load=request_data)
-                request.time = current_time
-                packets.append(request)
-                client_seq += len(request_data)
-                
-
-                time.sleep(random.expovariate(1.0 / 0.03))
-                current_time += random.expovariate(1.0 / 0.02)
-                # RESPONSE
-                if service_type == 'http' and dst_port in [80, 8080]:
-                    response_data = generate_random_http_response()
-                else:
-                    response_data = bytes([random.randint(32,126) for _ in range(random.randint(50,400))])
-                response = Ether(src=dst_mac, dst=src_mac) / \
-                        IP(src=dst_ip, dst=src_ip, ttl=64) / \
-                        TCP(sport=dst_port, dport=src_port, flags='PA',
-                            seq=server_seq, ack=client_seq, window=win_size) / \
-                        Raw(load=response_data)
-                response.time = current_time
-                packets.append(response)
-                server_seq += len(response_data)
-                current_time += random.expovariate(1.0 / 0.025)
-
-        else:
-            request_count = random.randint(*CICIDS_FLOW_CONFIG["http_requests_per_session"])
-
-            for _ in range(request_count):
-
-                iat = random.expovariate(1.0 / 0.035)   # średnio 50 ms
-                time.sleep(iat)
-                current_time += iat
-                # REQUEST
-                if service_type == 'http' and dst_port in [80, 8080]:
-                    request_data = generate_random_http_request()
-                else:
-                    request_data = bytes([random.randint(32,126) for _ in range(random.randint(50,400))])
-
-                request = Ether(src=src_mac, dst=dst_mac) / \
-                        IP(src=src_ip, dst=dst_ip, ttl=64) / \
-                        TCP(sport=src_port, dport=dst_port, flags='PA',
-                            seq=client_seq, ack=server_seq, window=win_size) / \
-                        Raw(load=request_data)
-                request.time = current_time
-                packets.append(request)
-                client_seq += len(request_data)
-                
-
-                time.sleep(random.expovariate(1.0 / 0.03))
-                current_time += random.expovariate(1.0 / 0.02)
-                # RESPONSE
-                if service_type == 'http' and dst_port in [80, 8080]:
-                    response_data = generate_random_http_response()
-                else:
-                    response_data = bytes([random.randint(32,126) for _ in range(random.randint(50,400))])
-                response = Ether(src=dst_mac, dst=src_mac) / \
-                        IP(src=dst_ip, dst=src_ip, ttl=64) / \
-                        TCP(sport=dst_port, dport=src_port, flags='PA',
-                            seq=server_seq, ack=client_seq, window=win_size) / \
-                        Raw(load=response_data)
-                response.time = current_time
-                packets.append(response)
-                server_seq += len(response_data)
-                current_time += random.expovariate(1.0 / 0.025)
-
-               
+                request_data = bytes([random.randint(32, 126) for _ in range(random.randint(50, 200))])
+            
+            request = Ether(src=src_mac, dst=dst_mac) / \
+                      IP(src=src_ip, dst=dst_ip, ttl=64) / \
+                      TCP(sport=src_port, dport=dst_port, flags='PA', 
+                          seq=client_seq, ack=server_seq) / \
+                      Raw(load=request_data)
+            packets.append(request)
+            client_seq += len(request_data)
+            
+            time.sleep(random.uniform(0.001, 0.05))
+            
+            # 5. ACK od serwera
+            ack_request = Ether(src=dst_mac, dst=src_mac) / \
+                          IP(src=dst_ip, dst=src_ip, ttl=64) / \
+                          TCP(sport=dst_port, dport=src_port, flags='A', 
+                              seq=server_seq, ack=client_seq)
+            packets.append(ack_request)
+            
+            time.sleep(random.uniform(0.01, 0.1))
+            
+            # 6. Dane od serwera (Response)
+            if service_type == 'http' and dst_port in [80, 8080]:
+                response_data = generate_random_http_response()
+            else:
+                response_data = bytes([random.randint(32, 126) for _ in range(random.randint(100, 500))])
+            
+            response = Ether(src=dst_mac, dst=src_mac) / \
+                       IP(src=dst_ip, dst=src_ip, ttl=64) / \
+                       TCP(sport=dst_port, dport=src_port, flags='PA', 
+                           seq=server_seq, ack=client_seq) / \
+                       Raw(load=response_data)
+            packets.append(response)
+            server_seq += len(response_data)
+            
+            time.sleep(random.uniform(0.001, 0.01))
+            
+            # 7. ACK od klienta
+            ack_response = Ether(src=src_mac, dst=dst_mac) / \
+                           IP(src=src_ip, dst=dst_ip, ttl=64) / \
+                           TCP(sport=src_port, dport=dst_port, flags='A', 
+                               seq=client_seq, ack=server_seq)
+            packets.append(ack_response)
+        
         # 8. FIN-ACK (Client -> Server)
-        time.sleep(random.expovariate(1.0 / 0.01))
+        time.sleep(random.uniform(0.01, 0.05))
         fin = Ether(src=src_mac, dst=dst_mac) / \
-            IP(src=src_ip, dst=dst_ip, ttl=64) / \
-            TCP(sport=src_port, dport=dst_port, flags='FA', 
-                seq=client_seq, ack=server_seq, window=win_size)
-        fin.time = current_time
+              IP(src=src_ip, dst=dst_ip, ttl=64) / \
+              TCP(sport=src_port, dport=dst_port, flags='FA', 
+                  seq=client_seq, ack=server_seq)
         packets.append(fin)
         
-        time.sleep(random.expovariate(1.0 / 0.03))
-        current_time += random.expovariate(1.0 / 0.01)
+        time.sleep(random.uniform(0.001, 0.01))
+        
         # 9. FIN-ACK (Server -> Client)
         fin_ack = Ether(src=dst_mac, dst=src_mac) / \
-                IP(src=dst_ip, dst=src_ip, ttl=64) / \
-                TCP(sport=dst_port, dport=src_port, flags='FA', 
-                    seq=server_seq, ack=client_seq + 1, window=win_size)
-        fin_ack.time = current_time
+                  IP(src=dst_ip, dst=src_ip, ttl=64) / \
+                  TCP(sport=dst_port, dport=src_port, flags='FA', 
+                      seq=server_seq, ack=client_seq + 1)
         packets.append(fin_ack)
         
-        time.sleep(random.expovariate(1.0 / 0.03))
-        current_time += random.expovariate(1.0 / 0.01)
+        time.sleep(random.uniform(0.001, 0.01))
+        
         # 10. Final ACK (Client -> Server)
         final_ack = Ether(src=src_mac, dst=dst_mac) / \
                     IP(src=src_ip, dst=dst_ip, ttl=64) / \
                     TCP(sport=src_port, dport=dst_port, flags='A', 
-                        seq=client_seq + 1, ack=server_seq + 1, window=win_size)
-        final_ack.time = current_time
+                        seq=client_seq + 1, ack=server_seq + 1)
         packets.append(final_ack)
-        current_time += random.expovariate(1.0 / 0.01)
+        
         return packets
     
     def _generate_udp_flow(self, src_ip, dst_ip, src_port, dst_port, src_mac, dst_mac):
@@ -420,7 +335,8 @@ class TrafficGenerator:
             list: Lista pakietów Scapy
         """
         packets = []
-        current_time = time.time()
+        
+        # DNS-like flow dla portu 53
         if dst_port == 53:
             # Query - losowo generowane
             dns_query = generate_random_dns_query()
@@ -428,37 +344,33 @@ class TrafficGenerator:
                     IP(src=src_ip, dst=dst_ip, ttl=64) / \
                     UDP(sport=src_port, dport=dst_port) / \
                     Raw(load=dns_query)
-            query.time = current_time
             packets.append(query)
             
-            time.sleep(random.expovariate(1.0 / 0.03))
-            current_time += random.expovariate(1.0 / 0.03)
+            time.sleep(random.uniform(0.005, 0.05))
+            
             # Response - losowo generowane na podstawie query
             dns_response = generate_random_dns_response(dns_query)
             response = Ether(src=dst_mac, dst=src_mac) / \
                        IP(src=dst_ip, dst=src_ip, ttl=64) / \
                        UDP(sport=dst_port, dport=src_port) / \
                        Raw(load=dns_response)
-            response.time = current_time
             packets.append(response)
         else:
             # Generic UDP exchange
-            request_data = bytes([random.randint(32, 126) for _ in range(random.randint(50, 400))])
+            request_data = bytes([random.randint(32, 126) for _ in range(random.randint(20, 100))])
             request = Ether(src=src_mac, dst=dst_mac) / \
                       IP(src=src_ip, dst=dst_ip, ttl=64) / \
                       UDP(sport=src_port, dport=dst_port) / \
                       Raw(load=request_data)
-            request.time = current_time
             packets.append(request)
-
-            time.sleep(random.expovariate(1.0 / 0.03))
-            current_time += random.expovariate(1.0 / 0.03)
-            response_data = bytes([random.randint(32, 126) for _ in range(random.randint(50, 400))])
+            
+            time.sleep(random.uniform(0.005, 0.05))
+            
+            response_data = bytes([random.randint(32, 126) for _ in range(random.randint(20, 200))])
             response = Ether(src=dst_mac, dst=src_mac) / \
                        IP(src=dst_ip, dst=src_ip, ttl=64) / \
                        UDP(sport=dst_port, dport=src_port) / \
                        Raw(load=response_data)
-            response.time = current_time
             packets.append(response)
         
         return packets
@@ -471,7 +383,6 @@ class TrafficGenerator:
             list: Lista pakietów Scapy
         """
         packets = []
-        current_time = time.time()
         icmp_id = random.randint(1, 65535)
         icmp_seq = random.randint(1, 100)
         payload = bytes([random.randint(0, 255) for _ in range(56)])  # Standard ping payload
@@ -481,17 +392,15 @@ class TrafficGenerator:
                        IP(src=src_ip, dst=dst_ip, ttl=64) / \
                        ICMP(type=8, code=0, id=icmp_id, seq=icmp_seq) / \
                        Raw(load=payload)
-        echo_request.time = current_time
         packets.append(echo_request)
-        current_time += random.expovariate(1.0 / 0.03)
-        time.sleep(random.expovariate(1.0 / 0.03))
+        
+        time.sleep(random.uniform(0.001, 0.02))
         
         # Echo Reply
         echo_reply = Ether(src=dst_mac, dst=src_mac) / \
                      IP(src=dst_ip, dst=src_ip, ttl=64) / \
                      ICMP(type=0, code=0, id=icmp_id, seq=icmp_seq) / \
                      Raw(load=payload)
-        echo_reply.time = current_time
         packets.append(echo_reply)
         
         return packets
@@ -507,17 +416,14 @@ class TrafficGenerator:
             tuple: (list of scapy_packets, features_dict)
         """
         if protocol is None:
-            protocol = random.choices(['TCP', 'UDP', 'ICMP'], weights=[78, 18, 4])[0]
+            protocol = random.choice(self.protocols)
         
-        src_ip = f"192.168.10.{random.randint(1, 50)}"          # klient (jak w CIC)
-        dst_ip = f"192.168.10.{random.randint(51, 254)}"        # ofiara
+        src_ip = fake.ipv4()
+        dst_ip = fake.ipv4()
         src_mac = self._generate_mac()
         dst_mac = self._generate_mac()
         src_port = random.randint(1024, 65535)
-        if random.random() < 0.65:
-            dst_port = random.choice([80, 443])
-        else:
-            dst_port = random.choice(self.common_ports)
+        dst_port = random.choice(self.common_ports)
         
         if protocol == 'TCP':
             packets = self._generate_tcp_flow(src_ip, dst_ip, src_port, dst_port, 
@@ -569,7 +475,7 @@ class TrafficGenerator:
         
         return saved_file
     
-    def generate_normal_traffic(self, count=700, interval=random.expovariate(1.0 / 0.03)):
+    def generate_normal_traffic(self, count=1, interval=1.0):
         """
         Generuje normalny ruch sieciowy z kompletnymi przepływami.
         
@@ -607,7 +513,6 @@ class TrafficGenerator:
         target_port = random.choice(self.common_ports)
         target_mac = self._generate_mac()
         packets = []
-        current_time = time.time()
         for i in range(count):
             # Różne źródła (spoofed IPs)
             src_ip = fake.ipv4()
@@ -632,7 +537,7 @@ class TrafficGenerator:
                 'attack_type': 'SYN Flood / Port Scan',
                 'flow_type': 'attack',
             }
-            syn.time = current_time
+            
             packets.append(syn)
             saved_file = self.add_packet_to_buffer(syn)
             yield features, saved_file
@@ -642,7 +547,7 @@ class TrafficGenerator:
 
 
     
-    def generate_dos_attack(self, count=200, interval=0.01):
+    def generate_dos_attack(self, count=50, interval=0.01):
         """
         Generuje symulację ataku DoS (wiele pakietów, ten sam cel).
         
@@ -653,7 +558,6 @@ class TrafficGenerator:
         Yields:
             tuple: (features, saved_file_info or None)
         """
-        current_time = time.time()
         target_ip = fake.ipv4()
         target_port = 80
         target_mac = self._generate_mac()
@@ -664,15 +568,14 @@ class TrafficGenerator:
             src_port = random.randint(1024, 65535)
             
             # HTTP flood z dużym payloadem
-            payload_size = random.randint(*CICIDS_FLOW_CONFIG["payload_size"])
-            payload = bytes([random.randint(32, 126) for _ in range(payload_size)])
+            payload = bytes([random.randint(32, 126) for _ in range(1400)])
             
             pkt = Ether(src=attacker_mac, dst=target_mac) / \
                   IP(src=attacker_ip, dst=target_ip, ttl=64) / \
                   TCP(sport=src_port, dport=target_port, flags='PA', 
                       seq=random.randint(1000, 100000)) / \
                   Raw(load=payload)
-            pkt.time = current_time
+            
             features = {
                 'timestamp': datetime.now().isoformat(),
                 'source_ip': attacker_ip,
