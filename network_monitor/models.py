@@ -53,3 +53,45 @@ class Alert(models.Model):
             2: 'bg-secondary',
         }
         return badges.get(self.feedback_status, 'bg-secondary')
+
+class ModelVersions(models.Model):
+    """Model przechowujący informacje o wersjach wytrenowanego modelu."""
+    version_tag = models.CharField(
+        max_length=255, 
+        help_text='Czytelna nazwa wersji (np. "v1.0-base").'
+    )
+    file_path = models.CharField(
+        max_length=512, 
+        help_text='Ścieżka do pliku binarnego modelu na serwerze.'
+    )
+    is_active = models.BooleanField(
+        default=False, 
+        help_text='Flaga określająca, czy model jest obecnie używany do detekcji.'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, 
+        help_text='Data i godzina zakończenia procesu trenowania.'
+    )
+    precision = models.FloatField(
+        null=True, 
+        blank=True,
+        help_text='Precyzja modelu wyliczona na zbiorze walidacyjnym.')
+    recall = models.FloatField(
+        null=True, 
+        blank=True, 
+        help_text='Czułość modelu wyliczona na zbiorze walidacyjnym.'
+    )
+    f1_score = models.FloatField(
+        null=True, 
+        blank=True, 
+        help_text='Metryka F1 (średnia harmoniczna precyzji i czułości) wyliczona na zbiorze walidacyjnym.'
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Model Version'
+        verbose_name_plural = 'Model Versions'
+
+    def __str__(self):
+        active_status = " [ACTIVE]" if self.is_active else ""
+        return f"{self.version_tag}{active_status}"
