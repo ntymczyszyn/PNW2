@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 
 
 class Alert(models.Model):
@@ -30,13 +30,19 @@ class Alert(models.Model):
         help_text='Status of verification by the administrator'
     )
     
+    # ---------------------------------------------------------------------
     # Dodatkowe pola przydatne do szczegółów
     protocol = models.CharField(max_length=10, blank=True, null=True)
     source_port = models.IntegerField(blank=True, null=True)
     destination_port = models.IntegerField(blank=True, null=True)
     packet_size = models.IntegerField(blank=True, null=True)
     description = models.TextField(blank=True, null=True)
-    
+    raw_features = models.BinaryField(
+        blank=True, 
+        null=True, 
+        help_text='Pickled raw features'
+    )
+    # ---------------------------------------------------------------------
     class Meta:
         ordering = ['-timestamp']
         verbose_name = 'Alert'
@@ -59,6 +65,12 @@ class ModelVersions(models.Model):
     version_tag = models.CharField(
         max_length=255, 
         help_text='Czytelna nazwa wersji (np. "v1.0-base").'
+    )
+    parent_version = models.CharField(
+        max_length=255, 
+        null=True, 
+        blank=True, 
+        help_text='Nazwa bazowej wersji modelu, z której wywodzi się ta wersja.'
     )
     file_path = models.CharField(
         max_length=512, 
@@ -95,3 +107,15 @@ class ModelVersions(models.Model):
     def __str__(self):
         active_status = " [ACTIVE]" if self.is_active else ""
         return f"{self.version_tag}{active_status}"
+
+    def save(self, *args, **kwargs):
+        """Ensure only one ModelVersions instance is active at a time.
+
+        If this instance is being marked active, atomically unset the flag
+        on any other instances to avoid race conditions.
+        """
+        with transaction.atomic():
+            if self.is_active:
+                # unset other active models in a single DB operation
+                type(self).objects.filter(is_active=True).exclude(pk=self.pk).update(is_active=False)
+            super().save(*args, **kwargs)

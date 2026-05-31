@@ -23,12 +23,14 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'network_monitor.settings')
 django.setup()
 
 from network_monitor.models import Alert
+from model_management.manager import get_active_model_path
 
 
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_PATH = BASE_DIR / 'analytic_pipline' / 'one_class_svm_model_mix.pkl'
+# Default fallback model path (kept for backward compatibility)
+MODEL_PATH = BASE_DIR / 'checkpoints' / 'one_class_svm_model_mix.pkl'
 
 # Mapowanie cech z CICFlowMeter na używane w modelu
 # FEATURE_MAP = {
@@ -137,11 +139,15 @@ def load_model():
         return _model_cache['model'], _model_cache['scaler']
     
     try:
-        if not MODEL_PATH.exists():
-            logger.error(f"Model file not found: {MODEL_PATH}")
+        # Prefer the active model path from manager if available
+        active_path = get_active_model_path()
+        path_to_use = Path(active_path) if active_path else MODEL_PATH
+
+        if not path_to_use.exists():
+            logger.error(f"Model file not found: %s", path_to_use)
             return None, None
-        
-        with open(MODEL_PATH, 'rb') as f:
+
+        with open(path_to_use, 'rb') as f:
             model, scaler = pickle.load(f)
         
         _model_cache['model'] = model
@@ -161,7 +167,8 @@ def save_attack_to_db(flow_data, prediction, confidence):
     Zapisuje wykryty atak do bazy danych Django.
     """
     try:
-        alert, created = Alert.objects.get_or_create(
+        pickled_data = pickle.dumps(flow_data)
+        alert = Alert.objects.create(
             source_ip=flow_data.get('src_ip', 'unknown'),
             destination_ip=flow_data.get('dst_ip', 'unknown'),
             anomaly_score=float(abs(confidence)),
@@ -175,12 +182,13 @@ def save_attack_to_db(flow_data, prediction, confidence):
                 f"pkts={flow_data.get('tot_fwd_pkts', 0) + flow_data.get('tot_bwd_pkts', 0)} "
                 f"score={confidence:.4f}"
             ),
-            feedback_status=0  
+            feedback_status=0,
+            raw_features=pickled_data
         )
-        logger.info(f"✓ Attack saved to DB: ID={alert.id}")
+        logger.info(f"Attack saved to DB: ID={alert.id}")
         
     except Exception as e:
-        logger.error(f"✗ Error saving attack to DB: {e}")
+        logger.error(f"Error saving attack to DB: {e}")
         import traceback
         traceback.print_exc()
 

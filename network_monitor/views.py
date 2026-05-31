@@ -1,9 +1,13 @@
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
+import json
 from django.views.decorators.http import require_POST
 from django.core.paginator import Paginator
-from .models import Alert
+from .models import Alert, ModelVersions
+
+# import manager functions for model management
+from model_management.manager import get_active_model_path, set_active_model, request_retraining
 
 
 @login_required
@@ -80,3 +84,65 @@ def alert_update_status(request, alert_id):
             pass
     
     return JsonResponse({'success': False, 'error': 'Nieprawidłowy status'}, status=400)
+
+
+@login_required
+@require_POST
+def alert_bulk_update_status(request):
+    """Aktualizuje status wielu alertów na raz."""
+    try:
+        data = json.loads(request.body)
+        alert_ids = data.get('alert_ids', [])
+        new_status = data.get('status')
+        
+        if not alert_ids or new_status is None:
+            return JsonResponse({'success': False, 'error': 'Brak danych'}, status=400)
+            
+        new_status = int(new_status)
+        if new_status in [0, 1, 2]:
+            updated = Alert.objects.filter(id__in=alert_ids).update(feedback_status=new_status)
+            return JsonResponse({
+                'success': True,
+                'updated_count': updated
+            })
+            
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        
+    return JsonResponse({'success': False, 'error': 'Błąd formatowania'}, status=400)
+
+
+@login_required
+def model_versions(request):
+    """List available model versions with metrics and actions."""
+    versions = ModelVersions.objects.all()
+    context = {
+        'versions': versions,
+    }
+    return render(request, 'model_versions.html', context)
+
+
+@login_required
+@require_POST
+def set_active_model_view(request):
+    try:
+        model_id = int(request.POST.get('model_id'))
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid model_id'}, status=400)
+
+    ok = set_active_model(model_id)
+    return JsonResponse({'success': ok})
+
+
+@login_required
+@require_POST
+def request_retrain_view(request):
+    try:
+        model_id = request.POST.get('model_id')
+        model_id = int(model_id) if model_id else None
+    except (TypeError, ValueError):
+        model_id = None
+
+    resp = request_retraining(model_id=model_id)
+    return JsonResponse(resp)
+

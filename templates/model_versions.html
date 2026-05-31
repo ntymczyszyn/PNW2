@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block title %}Model Versions{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Model Versions</h2>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Available Models</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Tag</th>
+                            <th>Base Model</th>
+                            <th>Created</th>
+                            <th>Precision</th>
+                            <th>Recall</th>
+                            <th>F1</th>
+                            <th>Active</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in versions %}
+                        <tr>
+                            <td>{{ v.version_tag }}</td>
+                            <td>{{ v.parent_version|default:'NaN' }}</td>
+                            <td>{{ v.created_at|date:"Y-m-d H:i:s" }}</td>
+                            <td>{{ v.precision|default:'-' }}</td>
+                            <td>{{ v.recall|default:'-' }}</td>
+                            <td>{{ v.f1_score|default:'-' }}</td>
+                            <td>{% if v.is_active %}<span class="badge bg-success">ACTIVE</span>{% endif %}</td>
+                            <td>
+                                <form method="post" action="{% url 'set_active_model' %}" style="display:inline;" class="d-inline set-active-form">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="model_id" value="{{ v.id }}">
+                                    <button class="btn btn-sm btn-primary" {% if v.is_active %}disabled{% endif %}>Set active</button>
+                                </form>
+                                <form method="post" action="{% url 'request_retrain' %}" style="display:inline;" class="d-inline retrain-form">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="model_id" value="{{ v.id }}">
+                                    <button class="btn btn-sm btn-secondary">Retrain</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="8" class="text-center text-muted">No model versions found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('submit', async function(e){
+    const form = e.target;
+    if (form.classList.contains('set-active-form') || form.classList.contains('retrain-form')){
+        e.preventDefault();
+        const data = new FormData(form);
+        const resp = await fetch(form.action, {
+            method: 'POST',
+            body: data,
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        });
+        const j = await resp.json();
+        
+        if (j.success === false || j.ok === false){
+            alert('Operation failed: ' + (j.error || JSON.stringify(j)));
+        } else {
+            if (form.classList.contains('set-active-form')) {
+                location.reload();
+            } else {
+                let note = "Model training request sent.";
+                if (j.info && j.info.note) {
+                    note = j.info.note;
+                }
+                alert(note + "\n\n When the model will be trained, it will be available for selection from the ModelVersions list.");
+            }
+        }
+    }
+});
+</script>
+
+{% endblock %}

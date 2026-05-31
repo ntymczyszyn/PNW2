@@ -30,5 +30,10 @@ urlpatterns = [
     # Alert API endpoints
     path('api/alert/<int:alert_id>/', views.alert_detail, name='alert_detail'),
     path('api/alert/<int:alert_id>/status/', views.alert_update_status, name='alert_update_status'),
+    path('api/alert/bulk_status/', views.alert_bulk_update_status, name='alert_bulk_update_status'),
+    # Model management
+    path('models/', views.model_versions, name='model_versions'),
+    path('models/set_active/', views.set_active_model_view, name='set_active_model'),
+    path('models/retrain/', views.request_retrain_view, name='request_retrain'),
     path('analytics/', include('analytic_pipline.urls')),
 ]

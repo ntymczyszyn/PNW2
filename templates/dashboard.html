@@ -42,7 +42,12 @@
         <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h4 class="mb-0">List of Alerts</h4>
-                {% comment %} <span class="badge bg-primary">{{ alerts|length }} displayed</span> {% endcomment %}
+                <div id="bulkActions" style="display: none;">
+                    <span class="me-2 text-muted"><span id="selectedCount">0</span> selected</span>
+                    <button class="btn btn-sm btn-warning btn-bulk-status" data-status="0">Pending</button>
+                    <button class="btn btn-sm btn-danger btn-bulk-status" data-status="1">Confirm</button>
+                    <button class="btn btn-sm btn-secondary btn-bulk-status" data-status="2">False</button>
+                </div>
             </div>
             <div class="card-body">
                 {% if alerts %}
@@ -50,6 +55,7 @@
                     <table class="table table-hover">
                         <thead class="table-dark">
                             <tr>
+                                <th><input type="checkbox" id="selectAll" class="form-check-input"></th>
                                 <th>ID</th>
                                 <th>Time</th>
                                 <th>Source IP</th>
@@ -62,6 +68,7 @@
                         <tbody>
                             {% for alert in alerts %}
                             <tr data-alert-id="{{ alert.id }}">
+                                <td><input type="checkbox" class="form-check-input alert-checkbox" value="{{ alert.id }}"></td>
                                 <td>{{ alert.id }}</td>
                                 <td>{{ alert.timestamp|date:"Y-m-d H:i:s" }}</td>
                                 <td>{{ alert.source_ip }}</td>
@@ -284,6 +291,48 @@
                     } else {
                         alert('Błąd: ' + data.error);
                     }
+                });
+            });
+        });
+
+        // Obsługa formularza zbiorczej zmiany statusu 
+        const selectAllCheckbox = document.getElementById('selectAll');
+        const bulkActions = document.getElementById('bulkActions');
+
+        // Wyczyść checkboxy używając JS na starcie (jeśli przeglądarka zapamiętała stany)
+        if (selectAllCheckbox) selectAllCheckbox.checked = false;
+        document.querySelectorAll('.alert-checkbox').forEach(cb => cb.checked = false);
+        
+        function updateBulkPanel() {
+            const checkedCount = document.querySelectorAll('.alert-checkbox:checked').length;
+            document.getElementById('selectedCount').textContent = checkedCount;
+            bulkActions.style.display = checkedCount > 0 ? 'inline-block' : 'none';
+        }
+
+        if(selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                document.querySelectorAll('.alert-checkbox').forEach(cb => cb.checked = selectAllCheckbox.checked);
+                updateBulkPanel();
+            });
+            document.querySelectorAll('.alert-checkbox').forEach(cb => {
+                cb.addEventListener('change', updateBulkPanel);
+            });
+        }
+
+        // Endpoint do zbiorczej zmiany statusu
+        document.querySelectorAll('.btn-bulk-status').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const checkedIds = Array.from(document.querySelectorAll('.alert-checkbox:checked')).map(cb => cb.value);
+                fetch(`/api/alert/bulk_status/`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken() 
+                    },
+                    body: JSON.stringify({'alert_ids': checkedIds, 'status': this.dataset.status})
+                }).then(res => res.json()).then(data => {
+                    if(data.success) location.reload();
+                    else alert('Błąd: ' + data.error);
                 });
             });
         });

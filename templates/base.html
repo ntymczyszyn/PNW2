@@ -17,6 +17,7 @@
                 <a class="nav-link {% block nav_dashboard %}{% endblock %}" href="{% url 'dashboard' %}">Dashboard</a>
                 <a class="nav-link {% block nav_traffic %}{% endblock %}" href="{% url 'traffic_generator:generator' %}">Traffic Generator</a>
                 {% if user.is_staff %}
+                    <a class="nav-link" href="{% url 'model_versions' %}">Models</a>
                     <a class="nav-link" href="{% url 'admin:index' %}">Admin site</a>
                 {% endif %}
                 <a href="{% url 'profile' %}" class="text-white text-decoration-none">👤 {{ user.username }}</a>
