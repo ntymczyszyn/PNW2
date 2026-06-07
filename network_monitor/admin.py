@@ -33,7 +33,7 @@ class ModelVersionsAdmin(admin.ModelAdmin):
         }),
         ('Metryki walidacyjne', {
             'fields': ('precision', 'recall', 'f1_score'),
-            'description': 'Opcjonalne — możesz zostawić puste przy ręcznym imporcie istniejącego modelu.',
+            'description': 'Opcjonalne. Może zostać puste przy ręcznym imporcie istniejącego modelu.',
         }),
         ('Informacje', {
             'fields': ('created_at',),

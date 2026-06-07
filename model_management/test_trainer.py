@@ -33,41 +33,6 @@ def test_flow_dicts_to_feature_matrix_shape():
     assert matrix.shape == (2, len(FEATURE_MAP))
 
 
-# @pytest.mark.django_db
-# def test_train_one_class_svm_creates_model_version(tmp_path, settings):
-#     baseline_path = tmp_path / "cleaned_dataset.csv"
-#     _write_baseline_csv(baseline_path)
-
-#     false_alert = Alert.objects.create(
-#         source_ip="10.0.0.1",
-#         destination_ip="10.0.0.2",
-#         anomaly_score=0.2,
-#         feedback_status=Alert.FeedbackStatus.FALSE_POSITIVE,
-#         raw_features=pickle.dumps(_sample_flow()),
-#     )
-#     Alert.objects.create(
-#         source_ip="10.0.0.3",
-#         destination_ip="10.0.0.4",
-#         anomaly_score=0.9,
-#         feedback_status=Alert.FeedbackStatus.CONFIRMED,
-#         raw_features=pickle.dumps(_sample_flow(flow_duration=999.0)),
-#     )
-
-#     checkpoints_dir = tmp_path / "checkpoints"
-#     with override_settings(
-#         TRAINING_BASELINE_CSV=baseline_path,
-#         BASE_DIR=tmp_path,
-#     ):
-#         result = train_one_class_svm(parent_version_tag="v-base")
-
-#     assert result["status"] == "completed"
-#     assert ModelVersions.objects.filter(version_tag=result["version_tag"]).exists()
-#     assert Path(result["file_path"]).exists()
-#     assert result["parent_version"] == "v-base"
-#     assert result["metrics"]["validation_samples"] > 0
-#     assert false_alert.feedback_status == Alert.FeedbackStatus.FALSE_POSITIVE
-
-
 @pytest.mark.django_db
 def test_train_one_class_svm_missing_baseline(tmp_path, settings):
     missing_path = tmp_path / "missing.csv"
