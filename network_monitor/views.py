@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse
 import json
 from django.views.decorators.http import require_POST
@@ -8,6 +8,12 @@ from .models import Alert, ModelVersions
 
 # import manager functions for model management
 from model_management.manager import get_active_model_path, set_active_model, request_retraining
+from model_management.training_data import get_training_stats
+from model_management.trainer import TrainingError, train_one_class_svm
+
+
+def staff_required(view_func):
+    return user_passes_test(lambda user: user.is_staff)(view_func)
 
 
 @login_required
@@ -113,6 +119,7 @@ def alert_bulk_update_status(request):
 
 
 @login_required
+@staff_required
 def model_versions(request):
     """List available model versions with metrics and actions."""
     versions = ModelVersions.objects.all()
@@ -123,6 +130,46 @@ def model_versions(request):
 
 
 @login_required
+@staff_required
+def model_training(request):
+    """Show training data summary and start-training controls."""
+    active_model = ModelVersions.objects.filter(is_active=True).order_by('-created_at').first()
+    context = {
+        'stats': get_training_stats(),
+        'active_model': active_model,
+    }
+    return render(request, 'model_training.html', context)
+
+
+@login_required
+@staff_required
+@require_POST
+def start_training_view(request):
+    try:
+        model_id = request.POST.get('model_id')
+        model_id = int(model_id) if model_id else None
+    except (TypeError, ValueError):
+        model_id = None
+
+    parent_version_tag = None
+    if model_id:
+        base_model = ModelVersions.objects.filter(pk=model_id).first()
+        if base_model:
+            parent_version_tag = base_model.version_tag
+
+    try:
+        result = train_one_class_svm(parent_version_tag=parent_version_tag)
+        return JsonResponse({'ok': True, 'info': result})
+    except TrainingError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+    except FileNotFoundError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
+
+
+@login_required
+@staff_required
 @require_POST
 def set_active_model_view(request):
     try:
@@ -135,6 +182,7 @@ def set_active_model_view(request):
 
 
 @login_required
+@staff_required
 @require_POST
 def request_retrain_view(request):
     try:

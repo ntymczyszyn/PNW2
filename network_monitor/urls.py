@@ -33,6 +33,8 @@ urlpatterns = [
     path('api/alert/bulk_status/', views.alert_bulk_update_status, name='alert_bulk_update_status'),
     # Model management
     path('models/', views.model_versions, name='model_versions'),
+    path('models/training/', views.model_training, name='model_training'),
+    path('models/training/start/', views.start_training_view, name='start_training'),
     path('models/set_active/', views.set_active_model_view, name='set_active_model'),
     path('models/retrain/', views.request_retrain_view, name='request_retrain'),
     path('analytics/', include('analytic_pipline.urls')),

@@ -28,6 +28,8 @@ def set_active_model(model_id: int) -> bool:
         mv.is_active = True
         mv.save()
         logger.info("Set active model to %s", mv.version_tag)
+        from analytic_pipline.traffic_predictor import clear_model_cache
+        clear_model_cache()
         return True
     except ModelVersions.DoesNotExist:
         logger.warning("ModelVersions id=%s does not exist", model_id)
@@ -46,6 +48,8 @@ def request_retraining(model_id: Optional[int] = None, **kwargs) -> dict:
 
     try:
         task_info = retraining.start_retraining(model_id=model_id, **kwargs)
+        if task_info.get('status') == 'failed':
+            return {'ok': False, 'error': task_info.get('error', 'Training failed'), 'info': task_info}
         return {'ok': True, 'info': task_info}
     except Exception as e:
         logger.exception("Failed to request retraining: %s", e)

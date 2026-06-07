@@ -17,3 +17,4 @@
 /test_csv
 /.pytest_cache
 /model_management/__pycache__
+/data

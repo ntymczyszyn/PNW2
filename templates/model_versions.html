@@ -43,7 +43,6 @@
                                 <form method="post" action="{% url 'request_retrain' %}" style="display:inline;" class="d-inline retrain-form">
                                     {% csrf_token %}
                                     <input type="hidden" name="model_id" value="{{ v.id }}">
-                                    <button class="btn btn-sm btn-secondary">Retrain</button>
                                 </form>
                             </td>
                         </tr>
@@ -76,11 +75,21 @@ document.addEventListener('submit', async function(e){
             if (form.classList.contains('set-active-form')) {
                 location.reload();
             } else {
-                let note = "Model training request sent.";
-                if (j.info && j.info.note) {
-                    note = j.info.note;
+                const info = j.info || {};
+                if (info.status === 'completed') {
+                    const metrics = info.metrics || {};
+                    alert(
+                        'Training completed.\n\n' +
+                        'Version: ' + (info.version_tag || '-') + '\n' +
+                        'Precision: ' + (metrics.precision != null ? metrics.precision.toFixed(4) : '-') + '\n' +
+                        'Recall: ' + (metrics.recall != null ? metrics.recall.toFixed(4) : '-') + '\n' +
+                        'F1: ' + (metrics.f1_score != null ? metrics.f1_score.toFixed(4) : '-') + '\n\n' +
+                        'The new model is available on the Models list.'
+                    );
+                    location.reload();
+                } else {
+                    alert('Model training request sent.');
                 }
-                alert(note + "\n\n When the model will be trained, it will be available for selection from the ModelVersions list.");
             }
         }
     }

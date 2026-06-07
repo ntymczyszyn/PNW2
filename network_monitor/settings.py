@@ -121,6 +121,8 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 
+TRAINING_BASELINE_CSV = BASE_DIR / 'data' / 'cleaned_dataset.csv'
+
 # Authentication settings
 LOGIN_REDIRECT_URL = 'dashboard'
 LOGOUT_REDIRECT_URL = 'login'
