@@ -8,7 +8,11 @@ Automatycznie wykonuje migracje, tworzy superusera i dodaje przykładowe dane.
 import os
 import sys
 import django
+from pathlib import Path
 
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 # Setup Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'network_monitor.settings')
 django.setup()
